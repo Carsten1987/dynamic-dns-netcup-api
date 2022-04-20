@@ -1,7 +1,7 @@
 <?php
 
 //Try to load required config.php, if it fails, output error, as user probably has not followed "Getting started" guide.
-if (!include_once('config.php')) {
+if (!include_once(__DIR__ . '/config.php')) {
     outputStderr("Could not open config.php. Please follow the getting started guide and provide a valid config.php file. Exiting.");
     exit(1);
 }
@@ -103,6 +103,39 @@ function outputStderr($message)
     fwrite(STDERR, $output);
 }
 
+//Returns list of domains with their subdomains for which we are supposed to perform changes
+function getDomains()
+{
+
+    if (! defined('DOMAINLIST')) {
+        outputWarning("You are using an outdated configuration format (for configuring domain / host). This is deprecated and might become incompatible very soon. Please update to the new configuration format (using 'DOMAINLIST'). Please check the documentation in config.dist.php for more information.");
+        if (! defined('DOMAIN')) {
+            outputStderr("Your configuration file is incorrect. You did not configure any domains ('DOMAINLIST' or 'DOMAIN' option (deprecated) in the config). Please check the documentation in config.dist.php. Exiting.");
+            exit(1);
+        }
+        if (! defined('HOST')) {
+            outputStderr("Your configuration file is incorrect. You did not configure any hosts (subdomains; 'HOST' option in the config). Please check the documentation in config.dist.php. Exiting.");
+            exit(1);
+        }
+        return array(DOMAIN => array(HOST));
+    }
+
+    $domains = preg_replace('/\s+/', '', DOMAINLIST);
+
+    $domainsExploded = explode(';', $domains);
+    foreach ($domainsExploded as $element) {
+        $arr = explode(':', $element);
+        $domainlist[$arr[0]] = $arr[1];
+    }
+
+    foreach ($domainlist as $domain => $subdomainlist) {
+        $subdomainarray = explode(',', $subdomainlist);
+        $result[$domain] = $subdomainarray;
+    }
+
+    return $result;
+}
+
 //Returns current public IPv4 address.
 function getCurrentPublicIPv4()
 {
@@ -168,6 +201,11 @@ function login($customernr, $apikey, $apipassword)
 
     if ($result['status'] === SUCCESS) {
         return $result['responsedata']['apisessionid'];
+    }
+
+    // Error from API: "More than 180 requests per minute. Please wait and retry later. Please contact our customer service to find out if the limitation of requests can be increased."
+    if ($result['statuscode'] === 4013) {
+	$result['longmessage'] = $result['longmessage'] . ' [ADDITIONAL INFORMATION: This error from the netcup DNS API also often indicates that you have supplied wrong API credentials. Please check them in the config file.]';
     }
 
     outputStderr(sprintf("Error while logging in: %s Exiting.", $result['longmessage']));
